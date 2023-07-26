@@ -14,7 +14,6 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using Burglary.Addons;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 using UnityEngine.Rendering;
@@ -23,6 +22,8 @@ namespace BurglaryInstaller
 {
     public partial class Form1 : Form
     {
+        private static string[] exist_check = { "0Harmony.dll", "Burglary.exe"};
+
         public Form1()
         {
             InitializeComponent();
@@ -89,6 +90,66 @@ namespace BurglaryInstaller
             Console.WriteLine("real");
         }
 
+        //source: chatgpt. fuck off i hate mono.cecil
+        private static void RemoveDuplicateTypes(AssemblyDefinition assembly, string typeName)
+        {
+            var typeToRemove = assembly.MainModule.Types.FirstOrDefault(t => t.FullName == typeName);
+            if (typeToRemove == null)
+            {
+                Console.WriteLine("Type not found in the assembly.");
+                return;
+            }
+
+            var duplicates = new List<TypeDefinition>();
+            foreach (var type in assembly.MainModule.Types)
+            {
+                if (type != typeToRemove && type.FullName == typeName)
+                {
+                    duplicates.Add(type);
+                }
+            }
+
+            foreach (var duplicate in duplicates)
+            {
+                assembly.MainModule.Types.Remove(duplicate);
+                Console.WriteLine($"Removed duplicate type: {duplicate.FullName}");
+            }
+        }
+        //source: chatgpt. fuck off i hate mono.cecil
+        private static void RemoveDuplicateStaticCtors(AssemblyDefinition assembly)
+        {
+            var staticConstructors = new Dictionary<TypeDefinition, List<MethodDefinition>>();
+
+            // Collect all static constructors in the assembly
+            foreach (var type in assembly.MainModule.Types)
+            {
+                foreach (var method in type.Methods)
+                {
+                    if (method.IsConstructor & method.IsStatic) // IsStaticConstructor isnt a thing chatgpt. dumbass.
+                    {
+                        if (!staticConstructors.ContainsKey(type))
+                            staticConstructors[type] = new List<MethodDefinition>();
+
+                        staticConstructors[type].Add(method);
+                    }
+                }
+            }
+
+            // Remove duplicates for each type
+            foreach (var type in staticConstructors.Keys)
+            {
+                var constructors = staticConstructors[type];
+                if (constructors.Count > 1)
+                {
+                    // Keep the first static constructor and remove the rest
+                    for (int i = 1; i < constructors.Count; i++)
+                    {
+                        type.Methods.Remove(constructors[i]);
+                        Console.WriteLine($"Removed duplicate static constructor in type {type.FullName}");
+                    }
+                }
+            }
+        }
 
         private void button1_Click(object sender, EventArgs e)
         {
@@ -99,7 +160,7 @@ namespace BurglaryInstaller
                     MessageBox.Show("Please select an option...", "ERROR", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return;
                 }
-                progressBar1.Value = progressBar1.Maximum / 5;
+                barr.Value = barr.Maximum / 5;
 
                 string ver = comboBox1.SelectedItem.ToString() == "Virtual Reality (VR)" ? "VR" : "nonVR";
 
@@ -109,28 +170,54 @@ namespace BurglaryInstaller
                 string temp_core = Path.GetTempFileName();
                 using (var assembly = AssemblyDefinition.ReadAssembly(coremodule_path))
                 {
-                    var targetType = assembly.MainModule.Types.FirstOrDefault(t => t.FullName == "UnityEngine.Rendering.SplashScreen");
+                    var targetType = assembly.MainModule.Types.FirstOrDefault(t => t.FullName == "UnityEngine.Material");
                     if (targetType == null)
                     {
-                        MessageBox.Show("Core Module DLL Corrupted?\nADVANCED: UnityEngine.Rendering.SplashScreen was null!", "ERROR", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        MessageBox.Show("Core Module DLL Corrupted?\nADVANCED: UnityEngine.Material was null!", "ERROR", MessageBoxButtons.OK, MessageBoxIcon.Error);
                         return;
                     }
 
+                    var staticConstructorAttributes =
+                    Mono.Cecil.MethodAttributes.Private |
+                    Mono.Cecil.MethodAttributes.HideBySig |
+                    Mono.Cecil.MethodAttributes.Static |
+                    Mono.Cecil.MethodAttributes.SpecialName |
+                    Mono.Cecil.MethodAttributes.RTSpecialName;
                     var staticCtor = new MethodDefinition(".cctor",
-                                                          Mono.Cecil.MethodAttributes.Static | Mono.Cecil.MethodAttributes.Private | Mono.Cecil.MethodAttributes.HideBySig | Mono.Cecil.MethodAttributes.SpecialName | Mono.Cecil.MethodAttributes.RTSpecialName,
-                                                          assembly.MainModule.ImportReference(typeof(void)));
+                                                            staticConstructorAttributes,
+                                                            assembly.MainModule.TypeSystem.Void);
                     var ctorIL = staticCtor.Body.GetILProcessor();
                     ctorIL.Append(Instruction.Create(Mono.Cecil.Cil.OpCodes.Ldstr, folderBrowserDialog1.SelectedPath + @"\" + ver + @"\The Break In_Data\Managed\Burglary.exe"));
-                    ctorIL.Append(Instruction.Create(Mono.Cecil.Cil.OpCodes.Call, assembly.MainModule.ImportReference(typeof(System.Diagnostics.Process).GetMethod("Start", new Type[] { typeof(string) }))));
-                    ctorIL.Append(Instruction.Create(Mono.Cecil.Cil.OpCodes.Pop));
-                    ctorIL.Append(Instruction.Create(Mono.Cecil.Cil.OpCodes.Ret));
-
+                    ctorIL.Append(Instruction.Create(OpCodes.Newobj, assembly.MainModule.ImportReference(
+                        assembly.MainModule.ImportReference(typeof(System.Diagnostics.ProcessStartInfo)).Resolve()
+                        .Methods.FirstOrDefault(m => m.IsConstructor && m.Parameters.Count == 1 && m.Parameters[0].ParameterType.FullName == "System.String")
+                    )));
+                    ctorIL.Append(Instruction.Create(OpCodes.Dup));
+                    ctorIL.Append(Instruction.Create(OpCodes.Ldstr, folderBrowserDialog1.SelectedPath + @"\" + ver + @"\The Break In_Data\Managed"));
+                    ctorIL.Append(Instruction.Create(OpCodes.Callvirt, assembly.MainModule.ImportReference(
+                        assembly.MainModule.ImportReference(typeof(System.Diagnostics.ProcessStartInfo)).Resolve()
+                        .Methods.FirstOrDefault(m => m.Name == "set_WorkingDirectory" && m.Parameters.Count == 1 && m.Parameters[0].ParameterType.FullName == "System.String")
+                    )));
+                    ctorIL.Append(Instruction.Create(OpCodes.Call, assembly.MainModule.ImportReference(
+                        assembly.MainModule.ImportReference(typeof(System.Diagnostics.Process)).Resolve()
+                        .Methods.FirstOrDefault(m => m.Name == "Start" && m.Parameters.Count == 1 && m.Parameters[0].ParameterType.FullName == "System.Diagnostics.ProcessStartInfo")
+                    )));
+                    ctorIL.Append(Instruction.Create(OpCodes.Pop));
+                    ctorIL.Append(Instruction.Create(OpCodes.Ret));
+                    //ctorIL.Append(Instruction.Create(Mono.Cecil.Cil.OpCodes.Call, assembly.MainModule.ImportReference(typeof(System.Diagnostics.Process).GetMethod("Start", new Type[] { typeof(string) }))));
+                    //ctorIL.Append(Instruction.Create(Mono.Cecil.Cil.OpCodes.Pop));
+                    //ctorIL.Append(Instruction.Create(Mono.Cecil.Cil.OpCodes.Ret));
+                    barr.Value = barr.Maximum / 4;
                     targetType.Methods.Add(staticCtor);
+                    targetType.IsBeforeFieldInit = false;
+
+                    RemoveDuplicateStaticCtors(assembly);
 
                     assembly.Write(temp_core);
                 }
                 File.Delete(coremodule_path);
                 File.Copy(temp_core, coremodule_path);
+                barr.Value = barr.Maximum / 3;
 
                 string bin_dir = folderBrowserDialog1.SelectedPath + @"\" + ver + @"\The Break In_Data\Managed";
 
@@ -161,12 +248,19 @@ namespace BurglaryInstaller
                         //        } catch { }
                         //    }
                         //}
+
+                        foreach (string entry in exist_check)
+                            if (File.Exists(bin_dir + "\\" + entry))
+                                File.Delete(bin_dir + "\\" + entry);
+
                         ZipFile.ExtractToDirectory(zip_path, bin_dir);
-                        ProcessStartInfo info = new ProcessStartInfo(System.IO.Directory.GetCurrentDirectory() + "\\nonVR\\The Break In_Data\\Managed\\Burglary.exe");
-                        info.WorkingDirectory = 
+
+                        //ProcessStartInfo info = new ProcessStartInfo(System.IO.Directory.GetCurrentDirectory() + "\\nonVR\\The Break In_Data\\Managed\\Burglary.exe");
+                        //info.WorkingDirectory = 
                         File.Delete(zip_path);
                     }
                 }
+                barr.Value = barr.Maximum / 2;
 
 
 
@@ -203,7 +297,7 @@ namespace BurglaryInstaller
                     var ilProcessor = methodBody.GetILProcessor();
 
                     // Find the constructor for Activator.CreateInstance(Type)
-                    var activatorCtor = targetAssembly.MainModule.ImportReference(typeof(Activator).GetMethod("CreateInstance", new[] {typeof(Type)}));
+                    var activatorCtor = targetAssembly.MainModule.ImportReference(typeof(Activator).GetMethod("CreateInstance", new[] { typeof(Type) }));
 
                     ilProcessor.Append(ilProcessor.Create(OpCodes.Ldarg_0));
                     ilProcessor.Append(ilProcessor.Create(OpCodes.Call, activatorCtor));
@@ -216,6 +310,7 @@ namespace BurglaryInstaller
                     // Add the class to the module
                     targetAssembly.MainModule.Types.Add(asmLoaderType);
 
+                    RemoveDuplicateTypes(targetAssembly, "Burglary.asm_loader");
 
                     // Save the modified assembly
                     targetAssembly.Write(temp_asm);
@@ -223,8 +318,12 @@ namespace BurglaryInstaller
                 File.Delete(assembly_path);
                 File.Copy(temp_asm, assembly_path);
 
-                progressBar1.Value = progressBar1.Maximum;
+                barr.Value = barr.Maximum;
                 Console.WriteLine("complete");
+
+                button1.Enabled = false;
+
+                //dont mind this absolute fucking beast of a comment.
 
                 //using (WebClient c = new WebClient())
                 //{
