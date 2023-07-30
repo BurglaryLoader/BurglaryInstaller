@@ -22,7 +22,7 @@ namespace BurglaryInstaller
 {
     public partial class Form1 : Form
     {
-        private static string[] exist_check = { "0Harmony.dll", "Burglary.exe"};
+        private static string[] exist_check = { "doorstop_config.ini", "winhttp.dll", "Burglary\\BurglaryPreUnityLoader.dll", "Burglary\\0Harmony.dll", "Burglary\\Burglary.dll" };
 
         public Form1()
         {
@@ -75,6 +75,7 @@ namespace BurglaryInstaller
         internal static bar barr = null;
         private void Form1_Load(object sender, EventArgs e)
         {
+            MessageBox.Show("How To Use: Select an option, VR/Desktop. Then click \"Install\" and navigate to your \"The Break-In\" folder. inside there should be 2 folders, nonVR and VR. Do not choose any of those folders, instead choose their parent folder \"The Break-In\". When the button is disabled and the progressbar is full, its complete. Preferably, launch your game through STEAM. This prevents the weird double launch bug thing.","NOTICE!",MessageBoxButtons.OK);
             Console.WriteLine("real");
             this.Controls.Remove(progressBar1);
             bar progressBar = new bar();
@@ -163,165 +164,193 @@ namespace BurglaryInstaller
                 barr.Value = barr.Maximum / 5;
 
                 string ver = comboBox1.SelectedItem.ToString() == "Virtual Reality (VR)" ? "VR" : "nonVR";
-
-                string assembly_path = folderBrowserDialog1.SelectedPath + @"\" + ver + @"\The Break In_Data\Managed\Assembly-CSharp.dll";
-                string coremodule_path = folderBrowserDialog1.SelectedPath + @"\" + ver + @"\The Break In_Data\Managed\UnityEngine.CoreModule.dll";
-
-                string temp_core = Path.GetTempFileName();
-                using (var assembly = AssemblyDefinition.ReadAssembly(coremodule_path))
-                {
-                    var targetType = assembly.MainModule.Types.FirstOrDefault(t => t.FullName == "UnityEngine.Material");
-                    if (targetType == null)
-                    {
-                        MessageBox.Show("Core Module DLL Corrupted?\nADVANCED: UnityEngine.Material was null!", "ERROR", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                        return;
-                    }
-
-                    var staticConstructorAttributes =
-                    Mono.Cecil.MethodAttributes.Private |
-                    Mono.Cecil.MethodAttributes.HideBySig |
-                    Mono.Cecil.MethodAttributes.Static |
-                    Mono.Cecil.MethodAttributes.SpecialName |
-                    Mono.Cecil.MethodAttributes.RTSpecialName;
-                    var staticCtor = new MethodDefinition(".cctor",
-                                                            staticConstructorAttributes,
-                                                            assembly.MainModule.TypeSystem.Void);
-                    var ctorIL = staticCtor.Body.GetILProcessor();
-                    ctorIL.Append(Instruction.Create(Mono.Cecil.Cil.OpCodes.Ldstr, folderBrowserDialog1.SelectedPath + @"\" + ver + @"\The Break In_Data\Managed\Burglary.exe"));
-                    ctorIL.Append(Instruction.Create(OpCodes.Newobj, assembly.MainModule.ImportReference(
-                        assembly.MainModule.ImportReference(typeof(System.Diagnostics.ProcessStartInfo)).Resolve()
-                        .Methods.FirstOrDefault(m => m.IsConstructor && m.Parameters.Count == 1 && m.Parameters[0].ParameterType.FullName == "System.String")
-                    )));
-                    ctorIL.Append(Instruction.Create(OpCodes.Dup));
-                    ctorIL.Append(Instruction.Create(OpCodes.Ldstr, folderBrowserDialog1.SelectedPath + @"\" + ver + @"\The Break In_Data\Managed"));
-                    ctorIL.Append(Instruction.Create(OpCodes.Callvirt, assembly.MainModule.ImportReference(
-                        assembly.MainModule.ImportReference(typeof(System.Diagnostics.ProcessStartInfo)).Resolve()
-                        .Methods.FirstOrDefault(m => m.Name == "set_WorkingDirectory" && m.Parameters.Count == 1 && m.Parameters[0].ParameterType.FullName == "System.String")
-                    )));
-                    ctorIL.Append(Instruction.Create(OpCodes.Call, assembly.MainModule.ImportReference(
-                        assembly.MainModule.ImportReference(typeof(System.Diagnostics.Process)).Resolve()
-                        .Methods.FirstOrDefault(m => m.Name == "Start" && m.Parameters.Count == 1 && m.Parameters[0].ParameterType.FullName == "System.Diagnostics.ProcessStartInfo")
-                    )));
-                    ctorIL.Append(Instruction.Create(OpCodes.Pop));
-                    ctorIL.Append(Instruction.Create(OpCodes.Ret));
-                    //ctorIL.Append(Instruction.Create(Mono.Cecil.Cil.OpCodes.Call, assembly.MainModule.ImportReference(typeof(System.Diagnostics.Process).GetMethod("Start", new Type[] { typeof(string) }))));
-                    //ctorIL.Append(Instruction.Create(Mono.Cecil.Cil.OpCodes.Pop));
-                    //ctorIL.Append(Instruction.Create(Mono.Cecil.Cil.OpCodes.Ret));
-                    barr.Value = barr.Maximum / 4;
-                    targetType.Methods.Add(staticCtor);
-                    targetType.IsBeforeFieldInit = false;
-
-                    RemoveDuplicateStaticCtors(assembly);
-
-                    assembly.Write(temp_core);
-                }
-                File.Delete(coremodule_path);
-                File.Copy(temp_core, coremodule_path);
-                barr.Value = barr.Maximum / 3;
-
-                string bin_dir = folderBrowserDialog1.SelectedPath + @"\" + ver + @"\The Break In_Data\Managed";
-
+                string path = folderBrowserDialog1.SelectedPath + @"\" + ver;
+                string dl_url = "";
                 using (WebClient c = new WebClient())
                 {
-                    //Directory.Delete(bin_dir, true);
-                    //Directory.CreateDirectory(bin_dir);
-
-                    progressBar1.Value = progressBar1.Maximum / 4;
-                    byte[] bin_bytes = c.DownloadData(c.DownloadString("https://raw.githubusercontent.com/joseppiswan/burglary/main/uploads/latest.txt"));
+                    dl_url = c.DownloadString("https://raw.githubusercontent.com/BurglaryLoader/BurglaryHosting/main/uploads/latest.txt");
+                    Console.WriteLine(dl_url + " is url");
+                    byte[] bin_bytes = c.DownloadData(dl_url);
                     using (var stream = new MemoryStream(bin_bytes))
                     {
                         string zip_path = Path.Combine(Environment.CurrentDirectory, "temp.zip");
 
                         File.WriteAllBytes(zip_path, bin_bytes);
-
-                        //using (ZipArchive archive = ZipFile.OpenRead(zip_path))
-                        //{
-                        //    var result = archive.Entries;
-
-                        //    foreach (ZipArchiveEntry entry in result)
-                        //    {
-                        //        Console.WriteLine(entry.Name);
-                        //        try
-                        //        {
-                        //            entry.ExtractToFile(bin_dir);
-                        //            File.WriteAllBytes(bin_dir + "\\" + entry.Name,);
-                        //        } catch { }
-                        //    }
-                        //}
-
                         foreach (string entry in exist_check)
-                            if (File.Exists(bin_dir + "\\" + entry))
-                                File.Delete(bin_dir + "\\" + entry);
+                            if (File.Exists(path + "\\" + entry))
+                                File.Delete(path + "\\" + entry);
 
-                        ZipFile.ExtractToDirectory(zip_path, bin_dir);
+                        ZipFile.ExtractToDirectory(zip_path, path);
 
                         //ProcessStartInfo info = new ProcessStartInfo(System.IO.Directory.GetCurrentDirectory() + "\\nonVR\\The Break In_Data\\Managed\\Burglary.exe");
                         //info.WorkingDirectory = 
                         File.Delete(zip_path);
                     }
                 }
-                barr.Value = barr.Maximum / 2;
-
-
-
-
-
-
-                string temp_asm = Path.GetTempFileName();
-                // Load the target assembly
-                using (var targetAssembly = AssemblyDefinition.ReadAssembly(assembly_path))
-                {
-                    // Load the Burglary.exe assembly
-                    AssemblyDefinition burglaryAssembly = AssemblyDefinition.ReadAssembly(bin_dir + "\\Burglary.exe");
-
-                    // Get the Addon type from the Burglary.exe assembly
-
-                    TypeReference addonTypeRef = burglaryAssembly.MainModule.GetType("Burglary.Addons.Addon");
-
-                    // Import the Addon type into the target assembly
-                    TypeReference addonType = targetAssembly.MainModule.ImportReference(addonTypeRef);
-
-                    // Create a new class definition
-                    var asmLoaderType = new TypeDefinition("Burglary", "asm_loader",
-                        TypeAttributes.Public | TypeAttributes.Class | TypeAttributes.AutoClass |
-                        TypeAttributes.AnsiClass | TypeAttributes.BeforeFieldInit,
-                        targetAssembly.MainModule.ImportReference(typeof(object)));
-
-                    // Create a static method "load" in asm_loader
-                    var loadMethod = new MethodDefinition("load",
-                        MethodAttributes.Public | MethodAttributes.Static | MethodAttributes.HideBySig,
-                        addonType);
-                    loadMethod.Parameters.Add(new ParameterDefinition("t", ParameterAttributes.None,
-                        targetAssembly.MainModule.ImportReference(typeof(Type))));
-                    var methodBody = new MethodBody(loadMethod);
-                    var ilProcessor = methodBody.GetILProcessor();
-
-                    // Find the constructor for Activator.CreateInstance(Type)
-                    var activatorCtor = targetAssembly.MainModule.ImportReference(typeof(Activator).GetMethod("CreateInstance", new[] { typeof(Type) }));
-
-                    ilProcessor.Append(ilProcessor.Create(OpCodes.Ldarg_0));
-                    ilProcessor.Append(ilProcessor.Create(OpCodes.Call, activatorCtor));
-                    ilProcessor.Append(ilProcessor.Create(OpCodes.Castclass, addonType));
-                    ilProcessor.Append(ilProcessor.Create(OpCodes.Ret));
-
-                    loadMethod.Body = methodBody;
-                    asmLoaderType.Methods.Add(loadMethod);
-
-                    // Add the class to the module
-                    targetAssembly.MainModule.Types.Add(asmLoaderType);
-
-                    RemoveDuplicateTypes(targetAssembly, "Burglary.asm_loader");
-
-                    // Save the modified assembly
-                    targetAssembly.Write(temp_asm);
-                }
-                File.Delete(assembly_path);
-                File.Copy(temp_asm, assembly_path);
 
                 barr.Value = barr.Maximum;
                 Console.WriteLine("complete");
 
                 button1.Enabled = false;
+
+                //string assembly_path = folderBrowserDialog1.SelectedPath + @"\" + ver + @"\The Break In_Data\Managed\Assembly-CSharp.dll";
+                //string coremodule_path = folderBrowserDialog1.SelectedPath + @"\" + ver + @"\The Break In_Data\Managed\UnityEngine.CoreModule.dll";
+
+                //string temp_core = Path.GetTempFileName();
+                //using (var assembly = AssemblyDefinition.ReadAssembly(coremodule_path))
+                //{
+                //    var targetType = assembly.MainModule.Types.FirstOrDefault(t => t.FullName == "UnityEngine.Material");
+                //    if (targetType == null)
+                //    {
+                //        MessageBox.Show("Core Module DLL Corrupted?\nADVANCED: UnityEngine.Material was null!", "ERROR", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                //        return;
+                //    }
+
+                //    var staticConstructorAttributes =
+                //    Mono.Cecil.MethodAttributes.Private |
+                //    Mono.Cecil.MethodAttributes.HideBySig |
+                //    Mono.Cecil.MethodAttributes.Static |
+                //    Mono.Cecil.MethodAttributes.SpecialName |
+                //    Mono.Cecil.MethodAttributes.RTSpecialName;
+                //    var staticCtor = new MethodDefinition(".cctor",
+                //                                            staticConstructorAttributes,
+                //                                            assembly.MainModule.TypeSystem.Void);
+                //    var ctorIL = staticCtor.Body.GetILProcessor();
+                //    ctorIL.Append(Instruction.Create(Mono.Cecil.Cil.OpCodes.Ldstr, folderBrowserDialog1.SelectedPath + @"\" + ver + @"\The Break In_Data\Managed\Burglary.exe"));
+                //    ctorIL.Append(Instruction.Create(OpCodes.Newobj, assembly.MainModule.ImportReference(
+                //        assembly.MainModule.ImportReference(typeof(System.Diagnostics.ProcessStartInfo)).Resolve()
+                //        .Methods.FirstOrDefault(m => m.IsConstructor && m.Parameters.Count == 1 && m.Parameters[0].ParameterType.FullName == "System.String")
+                //    )));
+                //    ctorIL.Append(Instruction.Create(OpCodes.Dup));
+                //    ctorIL.Append(Instruction.Create(OpCodes.Ldstr, folderBrowserDialog1.SelectedPath + @"\" + ver + @"\The Break In_Data\Managed"));
+                //    ctorIL.Append(Instruction.Create(OpCodes.Callvirt, assembly.MainModule.ImportReference(
+                //        assembly.MainModule.ImportReference(typeof(System.Diagnostics.ProcessStartInfo)).Resolve()
+                //        .Methods.FirstOrDefault(m => m.Name == "set_WorkingDirectory" && m.Parameters.Count == 1 && m.Parameters[0].ParameterType.FullName == "System.String")
+                //    )));
+                //    ctorIL.Append(Instruction.Create(OpCodes.Call, assembly.MainModule.ImportReference(
+                //        assembly.MainModule.ImportReference(typeof(System.Diagnostics.Process)).Resolve()
+                //        .Methods.FirstOrDefault(m => m.Name == "Start" && m.Parameters.Count == 1 && m.Parameters[0].ParameterType.FullName == "System.Diagnostics.ProcessStartInfo")
+                //    )));
+                //    ctorIL.Append(Instruction.Create(OpCodes.Pop));
+                //    ctorIL.Append(Instruction.Create(OpCodes.Ret));
+                //    //ctorIL.Append(Instruction.Create(Mono.Cecil.Cil.OpCodes.Call, assembly.MainModule.ImportReference(typeof(System.Diagnostics.Process).GetMethod("Start", new Type[] { typeof(string) }))));
+                //    //ctorIL.Append(Instruction.Create(Mono.Cecil.Cil.OpCodes.Pop));
+                //    //ctorIL.Append(Instruction.Create(Mono.Cecil.Cil.OpCodes.Ret));
+                //    barr.Value = barr.Maximum / 4;
+                //    targetType.Methods.Add(staticCtor);
+                //    targetType.IsBeforeFieldInit = false;
+
+                //    RemoveDuplicateStaticCtors(assembly);
+
+                //    assembly.Write(temp_core);
+                //}
+                //File.Delete(coremodule_path);
+                //File.Copy(temp_core, coremodule_path);
+                //barr.Value = barr.Maximum / 3;
+
+                //string bin_dir = folderBrowserDialog1.SelectedPath + @"\" + ver + @"\The Break In_Data\Managed";
+
+                //using (WebClient c = new WebClient())
+                //{
+                //    //Directory.Delete(bin_dir, true);
+                //    //Directory.CreateDirectory(bin_dir);
+
+                //    progressBar1.Value = progressBar1.Maximum / 4;
+                //    byte[] bin_bytes = c.DownloadData(c.DownloadString("https://raw.githubusercontent.com/joseppiswan/burglary/main/uploads/latest.txt"));
+                //    using (var stream = new MemoryStream(bin_bytes))
+                //    {
+                //        string zip_path = Path.Combine(Environment.CurrentDirectory, "temp.zip");
+
+                //        File.WriteAllBytes(zip_path, bin_bytes);
+
+                //        //using (ZipArchive archive = ZipFile.OpenRead(zip_path))
+                //        //{
+                //        //    var result = archive.Entries;
+
+                //        //    foreach (ZipArchiveEntry entry in result)
+                //        //    {
+                //        //        Console.WriteLine(entry.Name);
+                //        //        try
+                //        //        {
+                //        //            entry.ExtractToFile(bin_dir);
+                //        //            File.WriteAllBytes(bin_dir + "\\" + entry.Name,);
+                //        //        } catch { }
+                //        //    }
+                //        //}
+
+                //        foreach (string entry in exist_check)
+                //            if (File.Exists(bin_dir + "\\" + entry))
+                //                File.Delete(bin_dir + "\\" + entry);
+
+                //        ZipFile.ExtractToDirectory(zip_path, bin_dir);
+
+                //        //ProcessStartInfo info = new ProcessStartInfo(System.IO.Directory.GetCurrentDirectory() + "\\nonVR\\The Break In_Data\\Managed\\Burglary.exe");
+                //        //info.WorkingDirectory = 
+                //        File.Delete(zip_path);
+                //    }
+                //}
+                //barr.Value = barr.Maximum / 2;
+
+
+
+
+
+
+                //string temp_asm = Path.GetTempFileName();
+                //// Load the target assembly
+                //using (var targetAssembly = AssemblyDefinition.ReadAssembly(assembly_path))
+                //{
+                //    // Load the Burglary.exe assembly
+                //    AssemblyDefinition burglaryAssembly = AssemblyDefinition.ReadAssembly(bin_dir + "\\Burglary.exe");
+
+                //    // Get the Addon type from the Burglary.exe assembly
+
+                //    TypeReference addonTypeRef = burglaryAssembly.MainModule.GetType("Burglary.Addons.Addon");
+
+                //    // Import the Addon type into the target assembly
+                //    TypeReference addonType = targetAssembly.MainModule.ImportReference(addonTypeRef);
+
+                //    // Create a new class definition
+                //    var asmLoaderType = new TypeDefinition("Burglary", "asm_loader",
+                //        TypeAttributes.Public | TypeAttributes.Class | TypeAttributes.AutoClass |
+                //        TypeAttributes.AnsiClass | TypeAttributes.BeforeFieldInit,
+                //        targetAssembly.MainModule.ImportReference(typeof(object)));
+
+                //    // Create a static method "load" in asm_loader
+                //    var loadMethod = new MethodDefinition("load",
+                //        MethodAttributes.Public | MethodAttributes.Static | MethodAttributes.HideBySig,
+                //        addonType);
+                //    loadMethod.Parameters.Add(new ParameterDefinition("t", ParameterAttributes.None,
+                //        targetAssembly.MainModule.ImportReference(typeof(Type))));
+                //    var methodBody = new MethodBody(loadMethod);
+                //    var ilProcessor = methodBody.GetILProcessor();
+
+                //    // Find the constructor for Activator.CreateInstance(Type)
+                //    var activatorCtor = targetAssembly.MainModule.ImportReference(typeof(Activator).GetMethod("CreateInstance", new[] { typeof(Type) }));
+
+                //    ilProcessor.Append(ilProcessor.Create(OpCodes.Ldarg_0));
+                //    ilProcessor.Append(ilProcessor.Create(OpCodes.Call, activatorCtor));
+                //    ilProcessor.Append(ilProcessor.Create(OpCodes.Castclass, addonType));
+                //    ilProcessor.Append(ilProcessor.Create(OpCodes.Ret));
+
+                //    loadMethod.Body = methodBody;
+                //    asmLoaderType.Methods.Add(loadMethod);
+
+                //    // Add the class to the module
+                //    targetAssembly.MainModule.Types.Add(asmLoaderType);
+
+                //    RemoveDuplicateTypes(targetAssembly, "Burglary.asm_loader");
+
+                //    // Save the modified assembly
+                //    targetAssembly.Write(temp_asm);
+                //}
+                //File.Delete(assembly_path);
+                //File.Copy(temp_asm, assembly_path);
+
+                //barr.Value = barr.Maximum;
+                //Console.WriteLine("complete");
+
+                //button1.Enabled = false;
 
                 //dont mind this absolute fucking beast of a comment.
 
