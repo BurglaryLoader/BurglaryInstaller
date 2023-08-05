@@ -73,9 +73,9 @@ namespace BurglaryInstaller
             this.label2.ForeColor = System.Drawing.Color.White;
             this.label2.Location = new System.Drawing.Point(133, 59);
             this.label2.Name = "label2";
-            this.label2.Size = new System.Drawing.Size(106, 45);
+            this.label2.Size = new System.Drawing.Size(96, 45);
             this.label2.TabIndex = 2;
-            this.label2.Text = "v0.0.0";
+            this.label2.Text = "v1.1.0";
             // 
             // comboBox1
             // 

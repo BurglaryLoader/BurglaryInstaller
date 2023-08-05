@@ -22,7 +22,7 @@ namespace BurglaryInstaller
 {
     public partial class Form1 : Form
     {
-        private static string[] exist_check = { "doorstop_config.ini", "winhttp.dll", "Burglary\\BurglaryPreUnityLoader.dll", "Burglary\\0Harmony.dll", "Burglary\\Burglary.dll" };
+        private static string[] exist_check = { "doorstop_config.ini", "winhttp.dll" };
 
         public Form1()
         {
@@ -75,6 +75,10 @@ namespace BurglaryInstaller
         internal static bar barr = null;
         private void Form1_Load(object sender, EventArgs e)
         {
+            using (WebClient c = new WebClient())
+            {
+                this.label2.Text = c.DownloadString("https://raw.githubusercontent.com/BurglaryLoader/BurglaryHosting/main/current_version.txt") ?? "N/A";
+            }
             MessageBox.Show("How To Use: Select an option, VR/Desktop. Then click \"Install\" and navigate to your \"The Break-In\" folder. inside there should be 2 folders, nonVR and VR. Do not choose any of those folders, instead choose their parent folder \"The Break-In\". When the button is disabled and the progressbar is full, its complete. Preferably, launch your game through STEAM. This prevents the weird double launch bug thing.","NOTICE!",MessageBoxButtons.OK);
             Console.WriteLine("real");
             this.Controls.Remove(progressBar1);
@@ -176,9 +180,37 @@ namespace BurglaryInstaller
                         string zip_path = Path.Combine(Environment.CurrentDirectory, "temp.zip");
 
                         File.WriteAllBytes(zip_path, bin_bytes);
+
+                        if (Directory.Exists(path + "\\Burglary"))
+                        {
+                            Console.WriteLine("found existing Burglary dir. deleting...");
+                            foreach (string filepath in Directory.GetFiles(path + "\\Burglary"))
+                            {
+                                Console.WriteLine($"Deleting {filepath}.");
+                                File.Delete(filepath);
+                            }
+                            foreach (string dirpath in Directory.GetDirectories(path + "\\Burglary"))
+                            {
+                                Console.WriteLine($"Deleting {dirpath}.");
+                                foreach (string filepath in Directory.GetFiles(dirpath))
+                                {
+                                    Console.WriteLine($"Deleting {filepath}.");
+                                    File.Delete(filepath);
+                                }
+                                Directory.Delete(dirpath);
+                            }
+                            Directory.Delete(path + "\\Burglary");
+                        }
+
                         foreach (string entry in exist_check)
+                        {
+                            Console.WriteLine("entry: " + entry);
                             if (File.Exists(path + "\\" + entry))
+                            {
+                                Console.WriteLine(path + "\\" + entry + " exists. Deleting.");
                                 File.Delete(path + "\\" + entry);
+                            }
+                        }
 
                         ZipFile.ExtractToDirectory(zip_path, path);
 
